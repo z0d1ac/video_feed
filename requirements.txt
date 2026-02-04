@@ -1,0 +1,11 @@
+flask
+opencv-python
+face_recognition
+git+https://github.com/ageitgey/face_recognition_models
+numpy<2
+setuptools
+requests
+ffmpeg-python
+python-dotenv
+flask-login
+flasgger

@@ -1,0 +1,23 @@
+{
+    "cameras": [
+        {
+            "id": "camera_1",
+            "name": "Example Camera",
+            "video_source": "rtsp://user:password@ip_address:554/stream",
+            "resolution": [
+                0,
+                0
+            ],
+            "max_fps": 10,
+            "face_match_tolerance": 0.5,
+            "motion_threshold": 10000,
+            "webhook_url": "http://webhook-server/endpoint",
+            "snapshot_dir": "static/snapshots",
+            "log_cooldown": 60,
+            "min_face_score": 0.0
+        }
+    ],
+    "snapshot_dir": "static/snapshots",
+    "log_cooldown": 60,
+    "api_key": "generate-a-secure-random-key-here"
+}

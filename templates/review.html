@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1><i class="fas fa-search"></i> Security Review</h1>
+        <p class="text-muted">Identify unknown subjects detected by the system.</p>
+    </div>
+</div>
+
+<div class="snapshot-grid">
+    {% for face in faces %}
+    <div class="snapshot-card">
+        <div class="snapshot-img-container">
+            <img src="{{ url_for('static', filename=face.snapshot_path.replace('static/', '')) }}" loading="lazy">
+        </div>
+        <div class="snapshot-body">
+            <div class="snapshot-meta">
+                <span>#{{ face.id }}</span>
+                <span>{{ face.timestamp | int }}</span>
+                <span class="badge" style="background: #333; font-size: 0.7em;">{{ face.camera_id }}</span>
+                {% if face.detection_score is defined and face.detection_score is not none %}
+                <span class="badge" style="background: var(--accent); font-size: 0.7em;">Facial Confidence: {{
+                    face.detection_score
+                    }}</span>
+                {% endif %}
+            </div>
+
+            <form action="{{ url_for('tag_face', id=face.id) }}" method="POST">
+                {% if face.predicted_name %}
+                <div class="mb-2" style="font-size: 0.9em; color: var(--accent);">
+                    <i class="fas fa-robot"></i> Identified as: <strong>{{ face.predicted_name }}</strong>
+                </div>
+                {% endif %}
+
+                <div class="d-flex mb-4" style="margin-bottom: 1rem;">
+                    <input type="text" name="name" placeholder="Enter Name..."
+                        value="{{ face.predicted_name if face.predicted_name else '' }}" required>
+                </div>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button type="submit" name="action" value="save" class="btn btn-primary w-100" style="flex:1">
+                        <i class="fas fa-check"></i> Save
+                    </button>
+                    <button type="submit" name="action" value="ignore" class="btn btn-danger" formnovalidate>
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% else %}
+    <div class="col">
+        <div class="alert alert-info">
+            <i class="fas fa-check-circle"></i> System Secure. No unknown detections to review.
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

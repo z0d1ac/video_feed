@@ -1,0 +1,17 @@
+services:
+  video-feed:
+    build: .
+    container_name: video_feed
+    ports:
+      - "5050:5050"
+
+    env_file:
+      - .env
+    environment:
+      # Optional, but keeps Flask behaving sensibly in containers
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Mount current directory to /app
+      - .:/app
+    restart: unless-stopped

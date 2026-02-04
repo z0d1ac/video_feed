@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container" style="max-width: 1200px; padding-bottom: 6rem;">
+    <!-- Header -->
+    <div style="margin-bottom: 2rem;">
+        <h2 style="font-size: 2rem; margin-bottom: 0.5rem;">System Configuration</h2>
+        <p class="text-muted">Manage available cameras and global parameters.</p>
+    </div>
+
+    <!-- Global Settings -->
+    <div class="card mb-4" style="margin-bottom: 2rem;">
+        <h3
+            style="font-size: 0.9rem; margin-bottom: 1.5rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem;">
+            Global Settings
+        </h3>
+        <form action="{{ url_for('update_global_settings') }}" method="POST">
+            <div class="row">
+                <div class="col">
+                    <label style="color: var(--text-muted); font-size: 0.8rem;">SNAPSHOT DIRECTORY</label>
+                    <input type="text" name="snapshot_dir" value="{{ config.get('snapshot_dir', 'static/snapshots') }}"
+                        style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); width: 100%; padding: 0.8rem; color: #fff;">
+                </div>
+                <div class="col">
+                    <label style="color: var(--text-muted); font-size: 0.8rem;">LOG COOLDOWN (SEC)</label>
+                    <input type="number" name="log_cooldown" value="{{ config.get('log_cooldown', 60) }}"
+                        style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); width: 100%; padding: 0.8rem; color: #fff;">
+                </div>
+            </div>
+            <div style="margin-top: 1rem; text-align: right;">
+                <button type="submit" class="btn btn-primary btn-sm">Save Globals</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Camera List -->
+    <div style="margin-bottom: 2rem; display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="margin: 0; font-size: 1.5rem;">Cameras</h3>
+        <button onclick="openAddCameraModal()" class="btn btn-primary"><i class="fas fa-plus"></i> Add Camera</button>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 1.5rem;">
+        {% for cam in config.cameras %}
+        <div class="card" style="position: relative;">
+            <div style="position: absolute; top: 1rem; right: 1rem; display: flex; gap: 0.5rem;">
+                <button onclick="openEditCameraModal('{{ cam.id }}')" class="btn btn-sm"
+                    style="background: rgba(255,255,255,0.1);"><i class="fas fa-cog"></i></button>
+                <form action="{{ url_for('delete_camera', cam_id=cam.id) }}" method="POST"
+                    onsubmit="return confirm('Are you sure you want to delete this camera?');">
+                    <button type="submit" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i></button>
+                </form>
+            </div>
+
+            <h4 style="margin-top: 0; color: var(--accent);">{{ cam.name }}</h4>
+            <div class="text-muted" style="font-size: 0.8em; font-family: var(--font-mono); margin-bottom: 1rem;">ID: {{
+                cam.id }}</div>
+
+            <div style="font-size: 0.9em; line-height: 1.6;">
+                <div><span class="text-muted">Source:</span> <span
+                        style="font-family: var(--font-mono); word-break: break-all;">{{ cam.video_source }}</span>
+                </div>
+                <div><span class="text-muted">FPS:</span> {{ cam.max_fps }}</div>
+                <div><span class="text-muted">Motion Thresh:</span> {{ cam.motion_threshold }}</div>
+                <div><span class="text-muted">AI Interval:</span> {{ cam.process_interval if cam.process_interval is
+                    defined
+                    else 5 }} frames</div>
+            </div>
+
+            <!-- Hidden Data Fields for Edit Modal -->
+            <input type="hidden" id="data-name-{{cam.id}}" value="{{ cam.name }}">
+            <input type="hidden" id="data-source-{{cam.id}}" value="{{ cam.video_source }}">
+            <input type="hidden" id="data-fps-{{cam.id}}" value="{{ cam.max_fps }}">
+            <input type="hidden" id="data-tolerance-{{cam.id}}" value="{{ cam.face_match_tolerance }}">
+            <input type="hidden" id="data-score-{{cam.id}}"
+                value="{{ cam.min_face_score if cam.min_face_score is defined else 0.0 }}">
+            <input type="hidden" id="data-motion-{{cam.id}}" value="{{ cam.motion_threshold }}">
+            <input type="hidden" id="data-interval-{{cam.id}}"
+                value="{{ cam.process_interval if cam.process_interval is defined else 5 }}">
+            <input type="hidden" id="data-webhook-{{cam.id}}" value="{{ cam.webhook_url }}">
+        </div>
+        {% endfor %}
+    </div>
+
+</div>
+
+<!-- Camera Modal -->
+<div id="cameraModal"
+    style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center;">
+    <div class="card" style="width: 100%; max-width: 600px; max-height: 90vh; overflow-y: auto;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 1.5rem;">
+            <h3 id="modalTitle">Edit Camera</h3>
+            <button onclick="closeModal()"
+                style="background: none; border: none; color: #fff; font-size: 1.5rem; cursor: pointer;">&times;</button>
+        </div>
+
+        <form id="cameraForm" method="POST">
+            <!-- ID Field (Only for Add) -->
+            <div id="idFieldGroup" style="margin-bottom: 1rem;">
+                <label style="color: var(--text-muted); font-size: 0.8rem;">CAMERA ID (Unique, No Spaces)</label>
+                <input type="text" id="modal-id" name="id"
+                    style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); width: 100%; padding: 0.8rem; color: #fff;">
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <label style="color: var(--text-muted); font-size: 0.8rem;">NAME</label>
+                <input type="text" id="modal-name" name="name" required
+                    style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); width: 100%; padding: 0.8rem; color: #fff;">
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <label style="color: var(--text-muted); font-size: 0.8rem;">RTSP STREAM URL</label>
+                <input type="text" id="modal-source" name="video_source" required
+                    style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); width: 100%; padding: 0.8rem; color: #fff;">
+            </div>
+
+            <div class="row" style="margin-bottom: 1rem;">
+                <div class="col">
+                    <label style="color: var(--text-muted); font-size: 0.8rem;">MAX FPS</label>
+                    <input type="number" id="modal-fps" name="max_fps" value="10" min="1" max="60"
+                        style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); width: 100%; padding: 0.8rem; color: #fff;">
+                </div>
+                <div class="col">
+                    <label style="color: var(--text-muted); font-size: 0.8rem;">MOTION THRESHOLD</label>
+                    <input type="number" id="modal-motion" name="motion_threshold" value="10000" step="100"
+                        style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); width: 100%; padding: 0.8rem; color: #fff;">
+                </div>
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <label style="color: var(--text-muted); font-size: 0.8rem;">AI PROCESS INTERVAL (Frames)</label>
+                <input type="number" id="modal-interval" name="process_interval" value="5" min="1" max="60"
+                    style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); width: 100%; padding: 0.8rem; color: #fff;">
+                <small class="text-muted">Higher = Lower CPU usage, slightly slower detection.</small>
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <label style="color: var(--text-muted); font-size: 0.8rem;">FACE TOLERANCE <span id="val-tolerance"
+                        style="float: right; color: var(--accent);">0.50</span></label>
+                <input type="range" id="modal-tolerance" name="face_match_tolerance" min="0.30" max="0.80" step="0.05"
+                    style="width: 100%; cursor: pointer;"
+                    oninput="document.getElementById('val-tolerance').innerText = parseFloat(this.value).toFixed(2)">
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <label style="color: var(--text-muted); font-size: 0.8rem;">FACE CONFIDENCE THRESHOLD <span
+                        id="val-score" style="float: right; color: var(--accent);">0.0</span></label>
+                <div class="d-flex justify-content-between text-muted" style="font-size: 0.7rem; margin-bottom: 2px;">
+                    <span>Sensitive</span>
+                    <span>Balanced</span>
+                    <span>Strict</span>
+                </div>
+                <input type="range" id="modal-score" name="min_face_score" min="-0.5" max="1.5" step="0.1" value="0.0"
+                    style="width: 100%; cursor: pointer;"
+                    oninput="document.getElementById('val-score').innerText = parseFloat(this.value).toFixed(1)">
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <label style="color: var(--text-muted); font-size: 0.8rem;">WEBHOOK URL</label>
+                <input type="text" id="modal-webhook" name="webhook_url"
+                    style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); width: 100%; padding: 0.8rem; color: #fff;">
+            </div>
+
+            <div style="text-align: right; margin-top: 2rem;">
+                <button type="button" onclick="closeModal()" class="btn"
+                    style="color: #fff; margin-right: 1rem;">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    const modal = document.getElementById('cameraModal');
+    const form = document.getElementById('cameraForm');
+    const title = document.getElementById('modalTitle');
+    const idGroup = document.getElementById('idFieldGroup');
+    const idInput = document.getElementById('modal-id');
+
+    // Inputs
+    const fieldName = document.getElementById('modal-name');
+    const fieldSource = document.getElementById('modal-source');
+    const fieldFps = document.getElementById('modal-fps');
+    const fieldMotion = document.getElementById('modal-motion');
+    const fieldTolerance = document.getElementById('modal-tolerance');
+    const fieldScore = document.getElementById('modal-score');
+    const fieldInterval = document.getElementById('modal-interval');
+    const fieldWebhook = document.getElementById('modal-webhook');
+
+    function openAddCameraModal() {
+        title.innerText = "Add New Camera";
+        form.action = "{{ url_for('add_camera') }}";
+        idGroup.style.display = 'block';
+        idInput.required = true;
+        idInput.value = '';
+
+        // Reset defaults
+        fieldName.value = '';
+        fieldSource.value = '';
+        fieldFps.value = 10;
+        fieldMotion.value = 10000;
+        fieldTolerance.value = 0.5;
+        document.getElementById('val-tolerance').innerText = "0.50";
+        fieldScore.value = 0.0;
+        document.getElementById('val-score').innerText = "0.0";
+        fieldInterval.value = 5;
+        fieldWebhook.value = '';
+
+        modal.style.display = 'flex';
+    }
+
+    function openEditCameraModal(camId) {
+        title.innerText = "Edit Camera: " + camId;
+        form.action = "/settings/camera/update/" + camId;
+        idGroup.style.display = 'none';
+        idInput.required = false;
+
+        // Populate from hidden fields
+        fieldName.value = document.getElementById('data-name-' + camId).value;
+        fieldSource.value = document.getElementById('data-source-' + camId).value;
+        fieldFps.value = document.getElementById('data-fps-' + camId).value;
+        fieldMotion.value = document.getElementById('data-motion-' + camId).value;
+        fieldTolerance.value = document.getElementById('data-tolerance-' + camId).value;
+        document.getElementById('val-tolerance').innerText = parseFloat(fieldTolerance.value).toFixed(2);
+
+        fieldScore.value = document.getElementById('data-score-' + camId).value;
+        document.getElementById('val-score').innerText = parseFloat(fieldScore.value).toFixed(1);
+
+        fieldInterval.value = document.getElementById('data-interval-' + camId).value;
+        fieldWebhook.value = document.getElementById('data-webhook-' + camId).value;
+
+        modal.style.display = 'flex';
+    }
+
+    function closeModal() {
+        modal.style.display = 'none';
+    }
+
+    // Close on outside click
+    window.onclick = function (event) {
+        if (event.target == modal) {
+            closeModal();
+        }
+    }
+</script>
+{% endblock %}

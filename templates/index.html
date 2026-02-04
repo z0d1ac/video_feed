@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <!-- Main Video Feed Grid -->
+    <div class="col" style="flex: 3;">
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2><i class="fas fa-satellite-dish"></i> Live Uplink</h2>
+                <span style="color: var(--danger); font-weight: bold; animation: pulse 2s infinite;">REC</span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 1rem;">
+                {% for cam in cameras %}
+                <div style="background: #000; border-radius: 4px; overflow: hidden; border: 1px solid #333;">
+                    <div
+                        style="padding: 0.5rem; background: rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-weight: bold; color: var(--accent);">{{ cam.name }}</span>
+                        <span class="badge"
+                            style="background: {{ 'var(--success)' if cam.status == 'ONLINE' else 'var(--danger)' }}; font-size: 0.7em;">{{
+                            cam.status }}</span>
+                    </div>
+                    <div class="video-container" style="position: relative; width: 100%; padding-bottom: 56.25%;">
+                        <img id="video-feed-{{ cam.id }}" src="{{ url_for('video_feed', camera_id=cam.id) }}"
+                            style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain;"
+                            onerror="this.style.display='none'; setTimeout(() => { this.src = '{{ url_for('video_feed', camera_id=cam.id) }}?' + new Date().getTime(); this.style.display='block'; }, 2000);">
+                    </div>
+                </div>
+                {% endfor %}
+
+                {% if cameras|length == 0 %}
+                <div class="alert alert-warning">
+                    No cameras configured. Go to <a href="{{ url_for('settings') }}">Settings</a> to add a camera.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats Panel -->
+    <div class="col" style="flex: 1; min-width: 250px;">
+        <div class="card h-full">
+            <h3><i class="fas fa-chart-line"></i> System Status</h3>
+
+            <!-- Global Stats or First Camera Stats -->
+            <div id="stats-container">
+                <!-- Populated by JS -->
+                <div class="text-muted text-center p-4">Loading stats...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col">
+        <div class="card">
+            <h3><i class="fas fa-list-alt"></i> Recent Activity</h3>
+
+            {% if events %}
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Camera</th>
+                        <th>Event Detail</th>
+                    </tr>
+                </thead>
+                <tbody id="event-feed-body">
+                    {% for event in events %}
+                    <tr {% if event.snapshot_path
+                        %}data-snapshot="/static/{{ event.snapshot_path.replace('static/', '') }}"
+                        style="cursor: pointer;" {% endif %}>
+                        <td style="font-family: var(--font-mono); color: var(--accent);">{{ event.timestamp }}</td>
+                        <td><span class="badge" style="background: #333;">{{ event.camera_id }}</span></td>
+                        <td>{{ event.event_type }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div id="no-events-alert" class="alert alert-info">
+                No recent activity logged.
+            </div>
+            <table class="table" id="event-table" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Camera</th>
+                        <th>Event Detail</th>
+                    </tr>
+                </thead>
+                <tbody id="event-feed-body">
+                </tbody>
+            </table>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+    const EVENT_LIMIT = 10;
+
+    // Helper to create an event row
+    function createEventRow(event) {
+        const tr = document.createElement('tr');
+
+        // Add hover data if snapshot exists
+        if (event.snapshot_path) {
+            const relPath = event.snapshot_path.replace('static/', '');
+            tr.dataset.snapshot = `/static/${relPath}`;
+            tr.style.cursor = 'pointer';
+
+            tr.addEventListener('mouseenter', (e) => showSnapshotPreview(e, tr.dataset.snapshot));
+            tr.addEventListener('mousemove', (e) => moveSnapshotPreview(e));
+            tr.addEventListener('mouseleave', hideSnapshotPreview);
+        }
+
+        const tdTime = document.createElement('td');
+        tdTime.style.fontFamily = 'var(--font-mono)';
+        tdTime.style.color = 'var(--accent)';
+        tdTime.textContent = event.timestamp;
+
+        const tdCam = document.createElement('td');
+        tdCam.innerHTML = `<span class="badge" style="background: #333;">${event.camera_id}</span>`;
+
+        const tdEvent = document.createElement('td');
+        tdEvent.textContent = event.event_type;
+
+        tr.appendChild(tdTime);
+        tr.appendChild(tdCam);
+        tr.appendChild(tdEvent);
+
+        // Flash effect for new events
+        tr.style.animation = 'highlight 1s ease-out';
+
+        return tr;
+    }
+
+    // Initial Load of Events
+    function fetchEvents() {
+        fetch('/api/events')
+            .then(response => response.json())
+            .then(data => {
+                const tbody = document.getElementById('event-feed-body');
+                const noEventsAlert = document.getElementById('no-events-alert');
+                const eventTable = document.getElementById('event-table');
+
+                if (data.length > 0) {
+                    if (noEventsAlert) noEventsAlert.style.display = 'none';
+                    if (eventTable) eventTable.style.display = 'table';
+                }
+
+                tbody.innerHTML = '';
+                data.forEach(event => {
+                    tbody.appendChild(createEventRow(event));
+                });
+            })
+            .catch(error => console.error('Error fetching events:', error));
+    }
+
+    // Render Stats
+    function renderStats(data) {
+        const container = document.getElementById('stats-container');
+        container.innerHTML = '';
+
+        // Handle System Stats
+        if (data.system) {
+            const sysDiv = document.createElement('div');
+            sysDiv.className = 'mb-4 p-2 bg-blue-900/20 rounded border border-blue-500/30 text-center';
+            sysDiv.style.marginBottom = '1.5rem';
+            sysDiv.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+            sysDiv.style.paddingBottom = '1rem';
+            sysDiv.innerHTML = `
+                <div class="text-xs text-gray-400 uppercase">System Time (CET)</div>
+                <div class="text-lg font-mono text-white" style="font-weight: bold;">${data.system.time}</div>
+            `;
+            container.appendChild(sysDiv);
+        }
+
+        for (const [camId, stats] of Object.entries(data)) {
+            if (camId === 'system') continue;
+
+            const camDiv = document.createElement('div');
+            camDiv.className = 'mb-4 p-3 bg-black/30 rounded border border-white/10';
+            camDiv.style.marginBottom = '1.5rem';
+            camDiv.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+            camDiv.style.paddingBottom = '1rem';
+            camDiv.innerHTML = `
+                <h4 style="margin-top: 0; color: var(--text-color); font-size: 0.9rem; text-transform: uppercase;">${camId}</h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                    <div>
+                        <div class="text-xs text-gray-400 uppercase">FPS</div>
+                        <div class="text-xl font-mono text-green-400">${stats.fps}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-400 uppercase">Res</div>
+                        <div class="text-sm font-mono text-blue-400">${stats.resolution}</div>
+                    </div>
+                </div>
+                <div class="mt-2">
+                        <div class="text-xs text-gray-400 uppercase">Uptime</div>
+                        <div class="text-sm font-mono text-white">${stats.uptime}</div>
+                </div>
+            `;
+            container.appendChild(camDiv);
+        }
+
+        if (Object.keys(data).length === 0) {
+            container.innerHTML = '<div class="text-muted">No stats available.</div>';
+        }
+    }
+
+    // Initial Stats Load
+    function fetchStats() {
+        fetch('/api/stats')
+            .then(response => response.json())
+            .then(renderStats)
+            .catch(error => console.error('Error fetching stats:', error));
+    }
+
+    // SSE Setup
+    function setupSSE() {
+        const evtSource = new EventSource("/api/stream");
+
+        evtSource.onmessage = function (event) {
+            try {
+                // If the server sends simple "ping" or raw text, handle it.
+                // But we expect JSON.
+                // However, EventSource "data" field is what we need.
+                // If it's pure heartbeat (empty), ignore.
+                if (!event.data) return;
+
+                const msg = JSON.parse(event.data);
+
+                if (msg.type === 'stats') {
+                    renderStats(msg.data);
+                } else if (msg.type === 'event') {
+                    const tbody = document.getElementById('event-feed-body');
+                    const noEventsAlert = document.getElementById('no-events-alert');
+                    const eventTable = document.getElementById('event-table');
+
+                    // Show table if hidden
+                    if (noEventsAlert) noEventsAlert.style.display = 'none';
+                    if (eventTable) eventTable.style.display = 'table';
+
+                    // Prepend new row
+                    const newRow = createEventRow(msg.data);
+                    tbody.insertBefore(newRow, tbody.firstChild);
+
+                    // Limit rows
+                    if (tbody.children.length > EVENT_LIMIT) {
+                        tbody.removeChild(tbody.lastChild);
+                    }
+                }
+            } catch (e) {
+                console.error("Error parsing SSE:", e);
+            }
+        };
+
+        evtSource.onerror = function (err) {
+            console.error("EventSource failed:", err);
+            // Optionally close and retry later, but browser handles reconnection usually.
+        };
+    }
+
+    // Snapshot Preview Logic
+    const previewEl = document.createElement('div');
+    previewEl.id = 'snapshot-preview';
+    previewEl.style.position = 'fixed';
+    previewEl.style.display = 'none';
+    previewEl.style.border = '2px solid var(--accent)';
+    previewEl.style.zIndex = '1000';
+    previewEl.style.pointerEvents = 'none';
+    previewEl.style.background = '#000';
+    previewEl.innerHTML = '<img src="" style="max-width: 300px; max-height: 300px; display: block;">';
+    document.body.appendChild(previewEl);
+
+    function showSnapshotPreview(e, src) {
+        const img = previewEl.querySelector('img');
+        img.src = src;
+        previewEl.style.display = 'block';
+        moveSnapshotPreview(e);
+    }
+
+    function moveSnapshotPreview(e) {
+        // Position to the right of cursor
+        previewEl.style.left = (e.clientX + 20) + 'px';
+        previewEl.style.top = (e.clientY + 20) + 'px';
+
+        // Boundary checks (basic)
+        if (e.clientX + 320 > window.innerWidth) {
+            previewEl.style.left = (e.clientX - 320) + 'px';
+        }
+    }
+
+    function hideSnapshotPreview() {
+        previewEl.style.display = 'none';
+    }
+
+    // Init
+    fetchEvents(); // Still useful to get latest if cached content is old, or rely on SSE
+    fetchStats();
+    setupSSE();
+
+    // Attach listeners to server-rendered rows
+    document.querySelectorAll('tr[data-snapshot]').forEach(tr => {
+        tr.addEventListener('mouseenter', (e) => showSnapshotPreview(e, tr.dataset.snapshot));
+        tr.addEventListener('mousemove', (e) => moveSnapshotPreview(e));
+        tr.addEventListener('mouseleave', hideSnapshotPreview);
+    });
+
+    // Add CSS for highlight animation
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes highlight {
+            0% { background-color: var(--accent); }
+            100% { background-color: transparent; }
+        }
+    `;
+    document.head.appendChild(style);
+</script>
+{% endblock %}
