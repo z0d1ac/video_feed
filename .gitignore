@@ -10,3 +10,4 @@ static/snapshots/*
 .DS_Store
 config.json
 *.bak
+models/*.onnx

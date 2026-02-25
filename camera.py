@@ -38,13 +38,22 @@ class VideoCamera:
         self.source_url = config.get('video_source', 0)
         self.resolution = tuple(config.get('resolution', [2560, 1920]))
         self.max_fps = int(config.get('max_fps', 10))
-        self.face_tolerance = float(config.get('face_match_tolerance', 0.50))
-        self.min_face_score = float(config.get('min_face_score', 0.0))
+        self.face_tolerance = float(config.get('face_match_tolerance', 0.40))
+        self.min_face_score = float(config.get('min_face_score', 0.5))
+        
+        # Display and processing resolutions (separate for performance)
+        self.display_width = int(config.get('display_resolution', 800))
+        self.process_width = int(config.get('process_resolution', 400))
+        self.detection_scale = float(config.get('detection_scale', 0.5))
         
         # 1. Initialize Modules
         self.stream = RTSPStream(self.source_url, self.resolution, max_fps=self.max_fps)
         self.motion_detector = MotionDetector()
-        self.fr_system = FacialRecognitionSystem(tolerance=self.face_tolerance, min_score=self.min_face_score)
+        self.fr_system = FacialRecognitionSystem(
+            tolerance=self.face_tolerance,
+            min_score=self.min_face_score,
+            detection_scale=self.detection_scale
+        )
         self.annotator = FrameAnnotator()
 
         # 2. State Management
@@ -52,6 +61,8 @@ class VideoCamera:
         self.last_results = []
         self.jpeg: Optional[bytes] = None
         self.lock = threading.Lock()
+        self._viewer_active = False  # Track if anyone is viewing the stream
+        self._last_viewer_check = 0.0
         
         # Debounce/Cooldown state
         self.last_logged = {} 
@@ -61,6 +72,8 @@ class VideoCamera:
         # Processing settings
         self.process_every_n_frames = int(config.get('process_interval', 5))
         self.frame_count = 0
+        self._adaptive_skip = self.process_every_n_frames  # Adaptive skip interval
+        self._no_face_streak = 0  # How many scans in a row found no faces
         
         # 3. Start Stream
         self.stream.start()
@@ -75,7 +88,9 @@ class VideoCamera:
         self.fps_frame_count = 0
         self.current_fps = 0.0
         
-        print(f"VideoCamera ({self.camera_name}): Orchestration thread started.")
+        print(f"VideoCamera ({self.camera_name}): Orchestration thread started. "
+              f"Display: {self.display_width}px, Process: {self.process_width}px, "
+              f"Detection scale: {self.detection_scale}")
 
     def __del__(self):
         self.running = False
@@ -130,27 +145,38 @@ class VideoCamera:
                  self.fps_frame_count = 0
                  self.fps_start_time = now
 
-            # 2. Resize (Optimization)
+            # 2. Resize — Separate display and processing frames
             height, width = frame.shape[:2]
-            target_width = 800
-            if width > target_width:
-                scaling_factor = target_width / float(width)
-                new_height = int(height * scaling_factor)
-                frame = cv2.resize(frame, (target_width, new_height))
+            
+            # Display frame (larger, for stream viewers)
+            if width > self.display_width:
+                display_scale = self.display_width / float(width)
+                display_h = int(height * display_scale)
+                display_frame = cv2.resize(frame, (self.display_width, display_h))
+            else:
+                display_frame = frame
+            
+            # Processing frame (smaller, for motion + face detection)
+            if width > self.process_width:
+                process_scale = self.process_width / float(width)
+                process_h = int(height * process_scale)
+                process_frame = cv2.resize(frame, (self.process_width, process_h))
+            else:
+                process_frame = display_frame
 
-            # 3. Motion Detection
-            motion_val, fgmask = self.motion_detector.detect(frame)
+            # 3. Motion Detection (on smaller process_frame)
+            motion_val, fgmask = self.motion_detector.detect(process_frame)
             motion_threshold = self.config.get('motion_threshold', 10000)
             motion_detected = motion_val > motion_threshold
 
             # 4. Facial Recognition (Conditional)
             if motion_detected:
                 self.frame_count += 1
-                if self.frame_count % self.process_every_n_frames == 0:
+                if self.frame_count % self._adaptive_skip == 0:
                     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     print(f"[{ts}] [{self.camera_name}] Motion! ({motion_val}) - Scanning Faces...")
                     
-                    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    rgb_frame = cv2.cvtColor(process_frame, cv2.COLOR_BGR2RGB)
                     results = self.fr_system.process_frame(rgb_frame)
                     
                     active_results = []
@@ -163,14 +189,24 @@ class VideoCamera:
                             top, right, bottom, left = res[0], res[1], res[2], res[3]
                             
                             # Extract face region from motion mask
-                            face_motion_roi = fgmask[top:bottom, left:right]
+                            # Clamp coordinates to fgmask dimensions
+                            mh, mw = fgmask.shape[:2]
+                            m_top = max(0, min(top, mh))
+                            m_bottom = max(0, min(bottom, mh))
+                            m_left = max(0, min(left, mw))
+                            m_right = max(0, min(right, mw))
+                            
+                            face_motion_roi = fgmask[m_top:m_bottom, m_left:m_right]
                             
                             # Count moving pixels
-                            moving_pixels = cv2.countNonZero(face_motion_roi)
-                            total_pixels = (bottom - top) * (right - left)
+                            if face_motion_roi.size > 0:
+                                moving_pixels = cv2.countNonZero(face_motion_roi)
+                                total_pixels = face_motion_roi.size
+                            else:
+                                moving_pixels = 0
+                                total_pixels = 1
                             
                             # Check if the face has sufficient motion (e.g. > 5% of pixels are moving)
-                            # Using a small threshold (0.05) to be safe, but static objects should be near 0.
                             if total_pixels > 0:
                                 motion_ratio = moving_pixels / total_pixels
                                 if motion_ratio > 0.05:
@@ -180,24 +216,42 @@ class VideoCamera:
                             
                         if active_results:
                             print(f"[{ts}] [{self.camera_name}] Faces Found (Moving): {len(active_results)}")
-                            self.handle_detections(active_results, frame)
+                            self.handle_detections(active_results, process_frame)
                     
-                    # Let's draw ALL detections so users can see what's happening (maybe color code later?)
-                    # For now, let's just update last_results to active_results so we don't draw boxes on tires forever.
+                    # Adaptive skip: if no faces found, increase skip to reduce CPU waste
+                    if active_results:
+                        self._no_face_streak = 0
+                        self._adaptive_skip = self.process_every_n_frames  # Reset to normal
+                    else:
+                        self._no_face_streak += 1
+                        if self._no_face_streak >= 3:
+                            # After 3 empty scans, double the skip interval (max 4x base)
+                            self._adaptive_skip = min(
+                                self.process_every_n_frames * 4,
+                                self._adaptive_skip * 2
+                            )
+                    
                     self.last_results = active_results
             else:
                 self.last_results = []
                 self.frame_count = 0
+                self._no_face_streak = 0
+                self._adaptive_skip = self.process_every_n_frames  # Reset
 
-            # 5. Annotation
-            self.annotator.draw_faces(frame, self.last_results)
-            # self.annotator.draw_timestamp(frame) # Optional
+            # 5. Annotation (on display frame)
+            self.annotator.draw_faces(display_frame, self.last_results)
+            # self.annotator.draw_timestamp(display_frame) # Optional
 
-            # 6. Encode for Web Streaming
-            ret, jpeg = cv2.imencode('.jpg', frame)
-            if ret:
+            # 6. Encode for Web Streaming (skip if nobody is watching)
+            if self._viewer_active or (now - self._last_viewer_check < 10.0):
+                ret, jpeg = cv2.imencode('.jpg', display_frame)
+                if ret:
+                    with self.lock:
+                        self.jpeg = jpeg.tobytes()
+                        self.last_frame_time = time.time()
+            else:
+                # Still update last_frame_time so health checks don't think we stalled
                 with self.lock:
-                    self.jpeg = jpeg.tobytes()
                     self.last_frame_time = time.time()
             
             # Yield CPU
@@ -365,6 +419,10 @@ class VideoCamera:
 
     def get_frame(self) -> Optional[bytes]:
         """Returns the current JPEG frame bytes. Returns None if stale."""
+        # Signal that a viewer is active (enables JPEG encoding)
+        self._viewer_active = True
+        self._last_viewer_check = time.time()
+        
         with self.lock:
             # Check for staleness using last_frame_time (if it exists)
             # If we haven't received a frame in > 5 seconds, consider it stalled

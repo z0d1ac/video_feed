@@ -5,9 +5,8 @@ import os
 from unittest.mock import MagicMock
 
 # Global mocks needed for imports to work at all
-sys.modules['face_recognition'] = MagicMock()
 sys.modules['cv2'] = MagicMock()
-sys.modules['dlib'] = MagicMock()
+sys.modules['onnxruntime'] = MagicMock()
 
 # Now runs tests
 if __name__ == '__main__':

@@ -12,7 +12,7 @@ class TestStartupLogic(unittest.TestCase):
     def test_production_mode_init(self):
         """Test that services init immediately when DEBUG is False."""
         if 'app' in sys.modules: del sys.modules['app']
-        # We need to mock face_recognition to avoid missing module error in some envs
+        # We need to mock heavy dependencies to avoid missing module errors in test envs
         # and to avoid starting real threads during tests if possible.
         # But for this test, we accept the threads starting or mock them.
         # Let's mock the heavy systems to speed it up.

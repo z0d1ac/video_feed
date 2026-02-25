@@ -81,6 +81,18 @@ def init_db():
         print("Migrating DB: Adding predicted_name to unknown_faces")
         c.execute("ALTER TABLE unknown_faces ADD COLUMN predicted_name TEXT")
     
+    # Migration: Add encoding_version to known_faces (v1=dlib 128-d, v2=ArcFace 512-d)
+    c.execute("PRAGMA table_info(known_faces)")
+    kf_columns = [info[1] for info in c.fetchall()]
+    if 'encoding_version' not in kf_columns:
+        print("Migrating DB: Adding encoding_version to known_faces (existing rows → v1)")
+        c.execute("ALTER TABLE known_faces ADD COLUMN encoding_version INTEGER DEFAULT 1")
+    
+    # Migration: Add encoding_version to unknown_faces
+    if 'encoding_version' not in columns:
+        print("Migrating DB: Adding encoding_version to unknown_faces (existing rows → v1)")
+        c.execute("ALTER TABLE unknown_faces ADD COLUMN encoding_version INTEGER DEFAULT 1")
+    
     conn.commit()
     conn.close()
 
@@ -89,20 +101,24 @@ def add_known_face(name, encoding, snapshot_path=None):
     c = conn.cursor()
     # encoding is a numpy array, convert to list then json string
     encoding_json = json.dumps(encoding.tolist())
-    c.execute('INSERT INTO known_faces (name, encoding, created_at, snapshot_path) VALUES (?, ?, ?, ?)',
+    c.execute('INSERT INTO known_faces (name, encoding, created_at, snapshot_path, encoding_version) VALUES (?, ?, ?, ?, 2)',
               (name, encoding_json, time.time(), snapshot_path))
     conn.commit()
     conn.close()
 
-def get_known_faces(sort_by='name'):
+def get_known_faces(sort_by='name', version=2):
+    """Loads known faces. version=2 for ArcFace, version=None for all."""
     conn = get_db_connection()
     c = conn.cursor()
     
+    version_filter = 'WHERE encoding_version = ?' if version else ''
+    params = (version,) if version else ()
+    
     if sort_by == 'date':
-        c.execute('SELECT id, name, encoding, created_at, snapshot_path FROM known_faces ORDER BY created_at DESC')
+        c.execute(f'SELECT id, name, encoding, created_at, snapshot_path FROM known_faces {version_filter} ORDER BY created_at DESC', params)
     else:
         # Default to name
-        c.execute('SELECT id, name, encoding, created_at, snapshot_path FROM known_faces ORDER BY name ASC')
+        c.execute(f'SELECT id, name, encoding, created_at, snapshot_path FROM known_faces {version_filter} ORDER BY name ASC', params)
         
     rows = c.fetchall()
     faces = []
@@ -182,7 +198,7 @@ def add_unknown_face(encoding, snapshot_path, camera_id="primary", detection_sco
     conn = get_db_connection()
     c = conn.cursor()
     encoding_json = json.dumps(encoding.tolist())
-    c.execute('INSERT INTO unknown_faces (timestamp, encoding, snapshot_path, camera_id, detection_score, predicted_name) VALUES (?, ?, ?, ?, ?, ?)',
+    c.execute('INSERT INTO unknown_faces (timestamp, encoding, snapshot_path, camera_id, detection_score, predicted_name, encoding_version) VALUES (?, ?, ?, ?, ?, ?, 2)',
               (time.time(), encoding_json, snapshot_path, camera_id, detection_score, predicted_name))
     conn.commit()
     conn.close()

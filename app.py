@@ -351,7 +351,7 @@ def api_get_faces():
       200:
         description: List of known faces.
     """
-    faces = database.get_known_faces()
+    faces = database.get_known_faces(version=None)
     # Remove large encoding data for list view
     for face in faces:
         if 'encoding' in face:
@@ -522,7 +522,7 @@ def tag_face(id):
 @login_required
 def known_faces():
     sort_by = request.args.get('sort_by', 'name')
-    faces = database.get_known_faces(sort_by=sort_by)
+    faces = database.get_known_faces(sort_by=sort_by, version=None)
     # Convert timestamp to readable date if present
     tz = ZoneInfo("Europe/Paris")
     for face in faces:
@@ -595,8 +595,8 @@ def add_camera():
         "video_source": url,
         "resolution": [0,0],
         "max_fps": int(request.form.get('max_fps', 10)),
-        "face_match_tolerance": float(request.form.get('face_match_tolerance', 0.50)),
-        "min_face_score": float(request.form.get('min_face_score', -0.2)),
+        "face_match_tolerance": float(request.form.get('face_match_tolerance', 0.40)),
+        "min_face_score": float(request.form.get('min_face_score', 0.5)),
         "motion_threshold": int(request.form.get('motion_threshold', 10000)),
         "process_interval": int(request.form.get('process_interval', 5)),
         "webhook_url": request.form.get('webhook_url', '')

@@ -14,26 +14,44 @@ class MotionDetector:
             detect_shadows (bool): Whether to detect shadows (True) or not (False).
         """
         self.fgbg = cv2.createBackgroundSubtractorMOG2(history=history, varThreshold=threshold, detectShadows=detect_shadows)
+        # Pre-allocate kernel once instead of creating every frame
+        self.kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
 
-    def detect(self, frame: any) -> Tuple[bool, int]:
+    def detect(self, frame, scale: float = 0.5) -> Tuple[int, any]:
         """
         Processes a frame and checks for motion.
+        Internally downscales the frame for faster processing.
 
         Args:
             frame: The input frame (BGR).
+            scale: Scale factor for internal downscaling (default 0.5 = half size).
 
         Returns:
-            Tuple[bool, int]: (Motion Detected, Non-Zero Pixel Count)
+            Tuple[int, ndarray]: (Non-Zero Pixel Count, Foreground Mask at original resolution)
         """
-        # Pre-processing
-        blurred = cv2.GaussianBlur(frame, (21, 21), 0)
-        fgmask = self.fgbg.apply(blurred)
+        # Downscale for faster processing
+        if scale < 1.0:
+            small = cv2.resize(frame, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+        else:
+            small = frame
+        
+        # Pre-processing (smaller kernel matches smaller frame)
+        blurred = cv2.GaussianBlur(small, (11, 11), 0)
+        fgmask_small = self.fgbg.apply(blurred)
         
         # Morphological operations to remove noise
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_OPEN, kernel)
+        fgmask_small = cv2.morphologyEx(fgmask_small, cv2.MORPH_OPEN, self.kernel)
         
-        # Count movement
-        motion_count = cv2.countNonZero(fgmask)
+        # Count movement (on small mask)
+        motion_count = cv2.countNonZero(fgmask_small)
         
-        return motion_count, fgmask # Returning count mostly, caller decides threshold
+        # Scale motion count back to approximate original-resolution equivalent
+        if scale < 1.0:
+            motion_count = int(motion_count / (scale * scale))
+            # Upscale mask back to original size for face-motion filtering
+            h, w = frame.shape[:2]
+            fgmask = cv2.resize(fgmask_small, (w, h), interpolation=cv2.INTER_NEAREST)
+        else:
+            fgmask = fgmask_small
+        
+        return motion_count, fgmask
