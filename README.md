@@ -4,15 +4,15 @@ Watchtower is a robust, self-hosted security surveillance system designed for mo
 
 ## Key Features
 
-- **🧠 Real-Time Face Recognition**: Automatically identifies known individuals and flags unknown visitors using OpenCV YuNet and ArcFace ONNX models.
-- **⚡ Smart Throttling**: intelligently tracks unknown visitors using vector persistence to ensure distinct strangers are logged individually while preventing spam.
-- **🚀 Immediate Startup**: Always-on monitoring ensures cameras are active and recording events the moment the container starts, independent of client connections.
-- **🏃 Motion-Guided Detection**: Filers out static false positives (like parked bicycles or posters) by ensuring detected faces are actually moving.
-- **📹 Multi-Camera Support**: Concurrent monitoring of multiple RTSP streams with individual configuration.
-- **📝 Activity Logging**: Detailed event history with localized timestamps (CET) and snapshot capture.
-- **🔍 Review Interface**: Built-in workflow to review, tag, or ignore unknown faces to continuously improve recognition accuracy.
-- **⚡ Efficient**: Uses MOG2 background subtraction to trigger expensive AI processing only when activity is detected. Separate processing and display resolutions minimize CPU usage.
-- **🐳 Docker Ready**: Zero-dependency deployment using Docker Compose. ONNX models are downloaded automatically.
+- **Real-Time Face Recognition**: Automatically identifies known individuals and flags unknown visitors using OpenCV YuNet and ArcFace ONNX models.
+- **Smart Throttling**: Intelligently tracks unknown visitors using vector persistence to ensure distinct strangers are logged individually while preventing spam.
+- **Immediate Startup**: Always-on monitoring ensures cameras are active and recording events the moment the container starts, independent of client connections.
+- **Motion-Guided Detection**: Filters out static false positives (like parked bicycles or posters) by ensuring detected faces are actually moving.
+- **Multi-Camera Support**: Concurrent monitoring of multiple RTSP streams with individual configuration.
+- **Activity Logging**: Detailed event history with localized timestamps (CET) and snapshot capture.
+- **Review Interface**: Built-in workflow to review, tag, or ignore unknown faces to continuously improve recognition accuracy.
+- **Efficient**: Uses MOG2 background subtraction to trigger expensive AI processing only when activity is detected. Separate processing and display resolutions minimize CPU usage.
+- **Docker Ready**: Zero-dependency deployment using Docker Compose. ONNX models are downloaded automatically.
 
 ## Getting Started with Docker
 
@@ -77,11 +77,11 @@ This application is designed to run easily within a Docker container.
 
 The application provides a full REST API for integrating with other systems (Home Assistant, etc.).
 
-#### 📖 Swagger UI
+#### Swagger UI
 Interactive API documentation is available at:
 [http://localhost:5050/apidocs](http://localhost:5050/apidocs)
 
-#### 🔐 Authentication
+#### Authentication
 The API is secured using an **API Key**. 
 1.  Add `"api_key": "your-secret-key"` to your `config.json`.
 2.  Authenticate requests using one of the following methods:
