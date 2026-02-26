@@ -10,12 +10,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Download ONNX models
+# Download ONNX models (with fallback mirrors for ArcFace)
 RUN mkdir -p /app/models \
     && curl -fsSLo /app/models/face_detection_yunet_2023mar.onnx \
     https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx \
-    && curl -fsSLo /app/models/w600k_r50.onnx \
-    https://huggingface.co/vjump21848/buffalo_l_unzip/resolve/main/w600k_r50.onnx
+    && ( curl -fsSLo /app/models/w600k_r50.onnx \
+    https://huggingface.co/vjump21848/buffalo_l_unzip/resolve/main/w600k_r50.onnx \
+    || curl -fsSLo /app/models/w600k_r50.onnx \
+    https://huggingface.co/maze/faceX/resolve/main/w600k_r50.onnx \
+    || curl -fsSLo /app/models/w600k_r50.onnx \
+    https://huggingface.co/datasets/Gourieff/ReActor/resolve/main/models/facerestore_models/w600k_r50.onnx \
+    )
 
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel \

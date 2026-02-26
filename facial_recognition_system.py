@@ -24,30 +24,52 @@ ARCFACE_MODEL_PATH = os.environ.get(
     os.path.join(_MODELS_DIR, 'w600k_r50.onnx')
 )
 
-# Download URLs
-_MODEL_URLS = {
-    YUNET_MODEL_PATH: 'https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx',
-    ARCFACE_MODEL_PATH: 'https://huggingface.co/vjump21848/buffalo_l_unzip/resolve/main/w600k_r50.onnx',
+# Download mirror URLs (tried in order; first success wins)
+_MODEL_MIRRORS = {
+    'face_detection_yunet_2023mar.onnx': [
+        'https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx',
+    ],
+    'w600k_r50.onnx': [
+        'https://huggingface.co/vjump21848/buffalo_l_unzip/resolve/main/w600k_r50.onnx',
+        'https://huggingface.co/maze/faceX/resolve/main/w600k_r50.onnx',
+        'https://huggingface.co/datasets/Gourieff/ReActor/resolve/main/models/facerestore_models/w600k_r50.onnx',
+    ],
 }
 
 
 def _ensure_models():
-    """Downloads ONNX models if they are not present."""
+    """Downloads ONNX models if they are not present, trying multiple mirrors."""
     os.makedirs(_MODELS_DIR, exist_ok=True)
-    for path, url in _MODEL_URLS.items():
-        if not os.path.exists(path):
-            filename = os.path.basename(path)
-            logging.info(f"Downloading {filename}... (this may take a moment)")
+    
+    for filename, urls in _MODEL_MIRRORS.items():
+        path = os.path.join(_MODELS_DIR, filename)
+        if os.path.exists(path):
+            continue
+        
+        logging.info(f"Downloading {filename}... (this may take a moment)")
+        downloaded = False
+        
+        for url in urls:
             try:
+                logging.info(f"  Trying: {url}")
                 urllib.request.urlretrieve(url, path)
                 size_mb = os.path.getsize(path) / (1024 * 1024)
-                logging.info(f"Downloaded {filename} ({size_mb:.1f}MB)")
+                logging.info(f"  Downloaded {filename} ({size_mb:.1f}MB)")
+                downloaded = True
+                break
             except Exception as e:
-                logging.error(f"Failed to download {filename}: {e}")
-                raise FileNotFoundError(
-                    f"Could not download model {filename} from {url}. "
-                    f"Please download manually and place at {path}"
-                )
+                logging.warning(f"  Mirror failed: {e}")
+                # Clean up partial download
+                if os.path.exists(path):
+                    os.remove(path)
+                continue
+        
+        if not downloaded:
+            raise FileNotFoundError(
+                f"Could not download {filename} from any mirror. "
+                f"Please download manually and place at: {path}\n"
+                f"Mirrors tried: {urls}"
+            )
 
 
 _ensure_models()
