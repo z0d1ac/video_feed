@@ -4,15 +4,15 @@ Watchtower is a robust, self-hosted security surveillance system designed for mo
 
 ## Key Features
 
-- **🧠 Real-Time Face Recognition**: Automatically identifies known individuals and flags unknown visitors using `dlib` and `face_recognition`.
+- **🧠 Real-Time Face Recognition**: Automatically identifies known individuals and flags unknown visitors using OpenCV YuNet and ArcFace ONNX models.
 - **⚡ Smart Throttling**: intelligently tracks unknown visitors using vector persistence to ensure distinct strangers are logged individually while preventing spam.
 - **🚀 Immediate Startup**: Always-on monitoring ensures cameras are active and recording events the moment the container starts, independent of client connections.
 - **🏃 Motion-Guided Detection**: Filers out static false positives (like parked bicycles or posters) by ensuring detected faces are actually moving.
 - **📹 Multi-Camera Support**: Concurrent monitoring of multiple RTSP streams with individual configuration.
 - **📝 Activity Logging**: Detailed event history with localized timestamps (CET) and snapshot capture.
 - **🔍 Review Interface**: Built-in workflow to review, tag, or ignore unknown faces to continuously improve recognition accuracy.
-- **⚡ efficient**: Uses MOG2 background subtraction to trigger expensive AI processing only when activity is detected.
-- **🐳 Docker Ready**: Zero-dependency deployment using Docker Compose.
+- **⚡ Efficient**: Uses MOG2 background subtraction to trigger expensive AI processing only when activity is detected. Separate processing and display resolutions minimize CPU usage.
+- **🐳 Docker Ready**: Zero-dependency deployment using Docker Compose. ONNX models are downloaded automatically.
 
 ## Getting Started with Docker
 
@@ -61,7 +61,14 @@ This application is designed to run easily within a Docker container.
 
 ### Configuration (`config.json`)
 - `cameras`: List of camera objects.
-- `video_source`: RTSP URL or camera index (e.g., "0").
+  - `video_source`: RTSP URL or camera index (e.g., "0").
+  - `face_match_tolerance`: Cosine distance threshold for face matching (default: `0.40`, lower = stricter).
+  - `min_face_score`: YuNet face detection confidence threshold, 0.0-1.0 (default: `0.5`).
+  - `motion_threshold`: Pixel count to trigger motion (default: `10000`).
+  - `process_resolution`: Width in px for motion/face detection processing (default: `400`).
+  - `display_resolution`: Width in px for the web stream (default: `800`).
+  - `detection_scale`: Scale factor within face detection, 0.0-1.0 (default: `0.5`).
+  - `process_interval`: Run face detection every N frames during motion (default: `5`).
 - `snapshot_dir`: Directory to store face snapshots (mapped to volume in docker).
 - `webhook_url`: Optional URL to receive JSON payloads on detection.
 - `api_key`: Secure key for API authentication (e.g., "your-secret-key").
@@ -90,7 +97,5 @@ The API is secured using an **API Key**.
 ### Development
 To run tests:
 ```bash
-python3 run_tests.py
+python3 -m pytest tests/ -v
 ```
-python3 run_tests.py
-

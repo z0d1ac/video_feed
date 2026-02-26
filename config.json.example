@@ -9,12 +9,16 @@
                 0
             ],
             "max_fps": 10,
-            "face_match_tolerance": 0.5,
+            "face_match_tolerance": 0.4,
+            "min_face_score": 0.5,
             "motion_threshold": 10000,
+            "process_interval": 5,
+            "process_resolution": 400,
+            "display_resolution": 800,
+            "detection_scale": 0.5,
             "webhook_url": "http://webhook-server/endpoint",
             "snapshot_dir": "static/snapshots",
-            "log_cooldown": 60,
-            "min_face_score": 0.0
+            "log_cooldown": 60
         }
     ],
     "snapshot_dir": "static/snapshots",
