@@ -599,7 +599,10 @@ def add_camera():
         "min_face_score": float(request.form.get('min_face_score', 0.5)),
         "motion_threshold": int(request.form.get('motion_threshold', 10000)),
         "process_interval": int(request.form.get('process_interval', 5)),
-        "webhook_url": request.form.get('webhook_url', '')
+        "webhook_url": request.form.get('webhook_url', ''),
+        "process_resolution": int(request.form.get('process_resolution', 400)),
+        "display_resolution": int(request.form.get('display_resolution', 800)),
+        "detection_scale": float(request.form.get('detection_scale', 0.5))
     }
     
     manager.config['cameras'].append(new_cam)
@@ -631,6 +634,9 @@ def update_camera(cam_id):
     cam_config['motion_threshold'] = int(request.form.get('motion_threshold', 10000))
     cam_config['process_interval'] = int(request.form.get('process_interval', 5))
     cam_config['webhook_url'] = request.form.get('webhook_url', '')
+    cam_config['process_resolution'] = int(request.form.get('process_resolution', 400))
+    cam_config['display_resolution'] = int(request.form.get('display_resolution', 800))
+    cam_config['detection_scale'] = float(request.form.get('detection_scale', 0.5))
     
     # Reset resolution if re-probing requested (maybe a checkbox? or just if URL changed?)
     # For now, let's just always reset to [0,0] if they save settings, 

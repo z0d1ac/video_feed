@@ -64,6 +64,12 @@
                 <div><span class="text-muted">AI Interval:</span> {{ cam.process_interval if cam.process_interval is
                     defined
                     else 5 }} frames</div>
+                <div><span class="text-muted">Process Res:</span> {{ cam.process_resolution if cam.process_resolution is
+                    defined else 400 }}px</div>
+                <div><span class="text-muted">Display Res:</span> {{ cam.display_resolution if cam.display_resolution is
+                    defined else 800 }}px</div>
+                <div><span class="text-muted">Detection Scale:</span> {{ cam.detection_scale if cam.detection_scale is
+                    defined else 0.5 }}</div>
             </div>
 
             <!-- Hidden Data Fields for Edit Modal -->
@@ -77,6 +83,12 @@
             <input type="hidden" id="data-interval-{{cam.id}}"
                 value="{{ cam.process_interval if cam.process_interval is defined else 5 }}">
             <input type="hidden" id="data-webhook-{{cam.id}}" value="{{ cam.webhook_url }}">
+            <input type="hidden" id="data-processres-{{cam.id}}"
+                value="{{ cam.process_resolution if cam.process_resolution is defined else 400 }}">
+            <input type="hidden" id="data-displayres-{{cam.id}}"
+                value="{{ cam.display_resolution if cam.display_resolution is defined else 800 }}">
+            <input type="hidden" id="data-detscale-{{cam.id}}"
+                value="{{ cam.detection_scale if cam.detection_scale is defined else 0.5 }}">
         </div>
         {% endfor %}
     </div>
@@ -135,29 +147,62 @@
 
             <div style="margin-bottom: 1rem;">
                 <label style="color: var(--text-muted); font-size: 0.8rem;">FACE TOLERANCE <span id="val-tolerance"
-                        style="float: right; color: var(--accent);">0.50</span></label>
-                <input type="range" id="modal-tolerance" name="face_match_tolerance" min="0.30" max="0.80" step="0.05"
-                    style="width: 100%; cursor: pointer;"
+                        style="float: right; color: var(--accent);">0.40</span></label>
+                <input type="range" id="modal-tolerance" name="face_match_tolerance" min="0.20" max="0.70" step="0.05"
+                    value="0.40" style="width: 100%; cursor: pointer;"
                     oninput="document.getElementById('val-tolerance').innerText = parseFloat(this.value).toFixed(2)">
+                <small class="text-muted">Cosine distance threshold. Lower = stricter matching.</small>
             </div>
 
             <div style="margin-bottom: 1rem;">
                 <label style="color: var(--text-muted); font-size: 0.8rem;">FACE CONFIDENCE THRESHOLD <span
-                        id="val-score" style="float: right; color: var(--accent);">0.0</span></label>
+                        id="val-score" style="float: right; color: var(--accent);">0.5</span></label>
                 <div class="d-flex justify-content-between text-muted" style="font-size: 0.7rem; margin-bottom: 2px;">
                     <span>Sensitive</span>
                     <span>Balanced</span>
                     <span>Strict</span>
                 </div>
-                <input type="range" id="modal-score" name="min_face_score" min="-0.5" max="1.5" step="0.1" value="0.0"
+                <input type="range" id="modal-score" name="min_face_score" min="0.0" max="1.0" step="0.05" value="0.5"
                     style="width: 100%; cursor: pointer;"
-                    oninput="document.getElementById('val-score').innerText = parseFloat(this.value).toFixed(1)">
+                    oninput="document.getElementById('val-score').innerText = parseFloat(this.value).toFixed(2)">
+                <small class="text-muted">YuNet detection confidence. Higher = fewer false positives.</small>
             </div>
 
             <div style="margin-bottom: 1rem;">
                 <label style="color: var(--text-muted); font-size: 0.8rem;">WEBHOOK URL</label>
                 <input type="text" id="modal-webhook" name="webhook_url"
                     style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); width: 100%; padding: 0.8rem; color: #fff;">
+            </div>
+
+            <h4
+                style="font-size: 0.85rem; margin-top: 1.5rem; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1rem;">
+                Performance Tuning</h4>
+
+            <div class="row" style="margin-bottom: 1rem;">
+                <div class="col">
+                    <label style="color: var(--text-muted); font-size: 0.8rem;">PROCESS RESOLUTION (px)</label>
+                    <input type="number" id="modal-processres" name="process_resolution" value="400" min="200"
+                        max="1920" step="50"
+                        style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); width: 100%; padding: 0.8rem; color: #fff;">
+                    <small class="text-muted">Width for AI processing. Lower = faster, may miss small faces.</small>
+                </div>
+                <div class="col">
+                    <label style="color: var(--text-muted); font-size: 0.8rem;">DISPLAY RESOLUTION (px)</label>
+                    <input type="number" id="modal-displayres" name="display_resolution" value="800" min="320"
+                        max="1920" step="50"
+                        style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); width: 100%; padding: 0.8rem; color: #fff;">
+                    <small class="text-muted">Width for web stream display.</small>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <label style="color: var(--text-muted); font-size: 0.8rem;">DETECTION SCALE <span id="val-detscale"
+                        style="float: right; color: var(--accent);">0.50</span></label>
+                <input type="range" id="modal-detscale" name="detection_scale" min="0.25" max="1.0" step="0.05"
+                    value="0.50" style="width: 100%; cursor: pointer;"
+                    oninput="document.getElementById('val-detscale').innerText = parseFloat(this.value).toFixed(2)">
+                <small class="text-muted">Scale factor within face detection. Lower = faster, may miss distant
+                    faces.</small>
             </div>
 
             <div style="text-align: right; margin-top: 2rem;">
@@ -176,7 +221,6 @@
     const idGroup = document.getElementById('idFieldGroup');
     const idInput = document.getElementById('modal-id');
 
-    // Inputs
     const fieldName = document.getElementById('modal-name');
     const fieldSource = document.getElementById('modal-source');
     const fieldFps = document.getElementById('modal-fps');
@@ -185,6 +229,9 @@
     const fieldScore = document.getElementById('modal-score');
     const fieldInterval = document.getElementById('modal-interval');
     const fieldWebhook = document.getElementById('modal-webhook');
+    const fieldProcessRes = document.getElementById('modal-processres');
+    const fieldDisplayRes = document.getElementById('modal-displayres');
+    const fieldDetScale = document.getElementById('modal-detscale');
 
     function openAddCameraModal() {
         title.innerText = "Add New Camera";
@@ -198,12 +245,16 @@
         fieldSource.value = '';
         fieldFps.value = 10;
         fieldMotion.value = 10000;
-        fieldTolerance.value = 0.5;
-        document.getElementById('val-tolerance').innerText = "0.50";
-        fieldScore.value = 0.0;
-        document.getElementById('val-score').innerText = "0.0";
+        fieldTolerance.value = 0.40;
+        document.getElementById('val-tolerance').innerText = "0.40";
+        fieldScore.value = 0.5;
+        document.getElementById('val-score').innerText = "0.50";
         fieldInterval.value = 5;
         fieldWebhook.value = '';
+        fieldProcessRes.value = 400;
+        fieldDisplayRes.value = 800;
+        fieldDetScale.value = 0.50;
+        document.getElementById('val-detscale').innerText = "0.50";
 
         modal.style.display = 'flex';
     }
@@ -223,10 +274,15 @@
         document.getElementById('val-tolerance').innerText = parseFloat(fieldTolerance.value).toFixed(2);
 
         fieldScore.value = document.getElementById('data-score-' + camId).value;
-        document.getElementById('val-score').innerText = parseFloat(fieldScore.value).toFixed(1);
+        document.getElementById('val-score').innerText = parseFloat(fieldScore.value).toFixed(2);
 
         fieldInterval.value = document.getElementById('data-interval-' + camId).value;
         fieldWebhook.value = document.getElementById('data-webhook-' + camId).value;
+
+        fieldProcessRes.value = document.getElementById('data-processres-' + camId).value;
+        fieldDisplayRes.value = document.getElementById('data-displayres-' + camId).value;
+        fieldDetScale.value = document.getElementById('data-detscale-' + camId).value;
+        document.getElementById('val-detscale').innerText = parseFloat(fieldDetScale.value).toFixed(2);
 
         modal.style.display = 'flex';
     }
