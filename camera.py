@@ -327,29 +327,29 @@ class VideoCamera:
                 matched_id = None
                 is_new = True
                 
-                # Cleanup old cache entries first
-                min_time = current_time - self.log_cooldown
-                self.recent_unknowns = [u for u in self.recent_unknowns if u['timestamp'] > min_time]
+                # Cleanup old cache entries first (remove entries not seen for 2x cooldown)
+                min_time = current_time - (self.log_cooldown * 2)
+                self.recent_unknowns = [u for u in self.recent_unknowns if u['last_seen'] > min_time]
                 
                 for u in self.recent_unknowns:
-                    # Calculate distance
-                    dist = np.linalg.norm(u['encoding'] - encoding)
-                    if dist < self.face_tolerance:
+                    # Cosine distance (matches facial_recognition_system.py logic)
+                    # ArcFace embeddings are L2-normalized, so dot product = cosine similarity
+                    similarity = np.dot(u['encoding'], encoding)
+                    cosine_dist = 1.0 - similarity
+                    
+                    if cosine_dist < self.face_tolerance:
                         matched_id = u['id']
                         is_new = False
-                        # Update timestamp? 
-                        # If we update timestamp, they stay "recent" forever if they keep standing there.
-                        # But we only want to log once per cooldown period.
-                        # So we should ONLY update timestamp if we log event.
-                        # But wait, if they stand there for 60s, we want to log again? Yes.
-                        # So we check if u['last_logged'] < min_time
+                        # Keep the cache entry alive while they're still in frame
+                        u['last_seen'] = current_time
+                        u['encoding'] = encoding  # Update with latest encoding
                         
                         if current_time - u['last_logged'] > self.log_cooldown:
-                            # Re-log this person
+                            # Re-log this person after cooldown expired
                             u['last_logged'] = current_time
                             self.log_unknown_event(frame, encoding, (top, right, bottom, left), score, u['id'], is_relog=True)
                         else:
-                            # On cooldown
+                            # On cooldown — skip
                             pass
                         break
                 
@@ -359,8 +359,8 @@ class VideoCamera:
                     self.recent_unknowns.append({
                         'id': new_id,
                         'encoding': encoding,
-                        'timestamp': current_time,   # For cache cleanup (last seen)
-                        'last_logged': current_time  # For cooldown
+                        'last_seen': current_time,    # For cache cleanup
+                        'last_logged': current_time   # For cooldown
                     })
                     self.log_unknown_event(frame, encoding, (top, right, bottom, left), score, new_id, is_relog=False)
 
