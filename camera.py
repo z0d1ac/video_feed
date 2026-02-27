@@ -347,25 +347,29 @@ class VideoCamera:
                         if current_time - u['last_logged'] > self.log_cooldown:
                             # Re-log this person after cooldown expired
                             u['last_logged'] = current_time
+                            u['best_score'] = score
                             self.log_unknown_event(frame, encoding, (top, right, bottom, left), score, u['id'], is_relog=True)
-                        else:
-                            # On cooldown — skip
-                            pass
+                        elif score > u.get('best_score', 0):
+                            # On cooldown but better snapshot available — silently upgrade
+                            u['best_score'] = score
+                            self._upgrade_snapshot(u.get('snapshot_path'), frame, encoding, (top, right, bottom, left), score)
                         break
                 
                 if is_new:
                     # Create new temporary ID
                     new_id = str(uuid.uuid4())[:8]
+                    snapshot_path = self.log_unknown_event(frame, encoding, (top, right, bottom, left), score, new_id, is_relog=False)
                     self.recent_unknowns.append({
                         'id': new_id,
                         'encoding': encoding,
                         'last_seen': current_time,    # For cache cleanup
-                        'last_logged': current_time   # For cooldown
+                        'last_logged': current_time,  # For cooldown
+                        'best_score': score,
+                        'snapshot_path': snapshot_path
                     })
-                    self.log_unknown_event(frame, encoding, (top, right, bottom, left), score, new_id, is_relog=False)
 
     def log_unknown_event(self, frame, encoding, location, score, temp_id, is_relog=False):
-        """Helper to log unknown event."""
+        """Helper to log unknown event. Returns snapshot path."""
         log_text = f"Unknown Person (ID: {temp_id}, Score: {score}) on {self.camera_name}"
         if is_relog:
             log_text += " [Recurring]"
@@ -391,6 +395,27 @@ class VideoCamera:
                 "snapshot_path": snapshot_path
             }
             send_webhook(webhook_url, payload)
+        
+        return snapshot_path
+
+    def _upgrade_snapshot(self, snapshot_path, frame, encoding, location, score):
+        """Silently upgrades an existing snapshot with a better-quality capture."""
+        if not snapshot_path or not os.path.exists(snapshot_path):
+            return
+        
+        top, right, bottom, left = location
+        height, width = frame.shape[:2]
+        pad = 50
+        
+        new_top = max(0, top - pad)
+        new_bottom = min(height, bottom + pad)
+        new_left = max(0, left - pad)
+        new_right = min(width, right + pad)
+        
+        cropped_face = frame[new_top:new_bottom, new_left:new_right]
+        cv2.imwrite(snapshot_path, cropped_face)
+        
+        logging.debug(f"Upgraded snapshot {os.path.basename(snapshot_path)} (score: {score:.2f})")
 
     def save_unknown_snapshot(self, frame, encoding, location, score=0.0, predicted_name=None):
         """Saves a snapshot of unknown (or known) faces, cropped to the face."""
