@@ -93,6 +93,19 @@ def init_db():
         print("Migrating DB: Adding encoding_version to unknown_faces (existing rows → v1)")
         c.execute("ALTER TABLE unknown_faces ADD COLUMN encoding_version INTEGER DEFAULT 1")
     
+    # Migration: Fix known_faces rows with NULL encoding_version (bug in resolve_unknown_face)
+    c.execute("SELECT COUNT(*) FROM known_faces WHERE encoding_version IS NULL")
+    null_count = c.fetchone()[0]
+    if null_count > 0:
+        print(f"Migrating DB: Fixing {null_count} known_faces rows with NULL encoding_version")
+        # Detect version by encoding length: 512-d = ArcFace (v2), 128-d = dlib (v1)
+        c.execute("SELECT id, encoding FROM known_faces WHERE encoding_version IS NULL")
+        for row in c.fetchall():
+            enc = json.loads(row['encoding'])
+            version = 2 if len(enc) == 512 else 1
+            c.execute("UPDATE known_faces SET encoding_version = ? WHERE id = ?", (version, row['id']))
+        print(f"Fixed encoding_version for {null_count} rows")
+    
     conn.commit()
     conn.close()
 
@@ -235,7 +248,7 @@ def resolve_unknown_face(id, name=None):
             snapshot_path = row['snapshot_path']
             
             # 1. Add to known_faces
-            c.execute('INSERT INTO known_faces (name, encoding, created_at, snapshot_path) VALUES (?, ?, ?, ?)',
+            c.execute('INSERT INTO known_faces (name, encoding, created_at, snapshot_path, encoding_version) VALUES (?, ?, ?, ?, 2)',
                       (name, encoding_json, time.time(), snapshot_path))
             
             # 2. Retroactively update Events Log
