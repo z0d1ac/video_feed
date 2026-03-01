@@ -497,6 +497,66 @@ def review():
         })
     return render_template('review.html', faces=faces)
 
+@app.route('/review/rescan', methods=['POST'])
+@login_required
+def rescan_faces():
+    """Re-compare all unreviewed unknown faces against current known faces."""
+    import numpy as np
+    
+    known_faces = database.get_known_faces(version=2)
+    if not known_faces:
+        flash('No known faces in database yet. Tag some faces first.', 'info')
+        return redirect(url_for('review'))
+    
+    # Build known encodings matrix
+    known_encodings = np.array([f['encoding'] for f in known_faces])
+    known_names = [f['name'] for f in known_faces]
+    
+    # Get tolerance from first camera config, or use default
+    manager = get_manager()
+    tolerance = 0.4
+    if manager.cameras:
+        first_cam = next(iter(manager.cameras.values()))
+        tolerance = first_cam.face_tolerance
+    
+    # Scan all unreviewed unknowns
+    unknown_faces = database.get_unreviewed_unknown_faces()
+    matched_count = 0
+    
+    conn = database.get_db_connection()
+    c = conn.cursor()
+    
+    for face in unknown_faces:
+        try:
+            encoding = np.array(json.loads(face['encoding']))
+        except (json.JSONDecodeError, TypeError):
+            continue
+        
+        # Skip non-ArcFace encodings (wrong dimension)
+        if len(encoding) != 512:
+            continue
+        
+        # Cosine similarity (encodings are L2-normalized)
+        similarities = np.dot(known_encodings, encoding)
+        best_idx = np.argmax(similarities)
+        best_dist = 1.0 - similarities[best_idx]
+        
+        if best_dist < tolerance:
+            proposed_name = known_names[best_idx]
+            c.execute('UPDATE unknown_faces SET predicted_name = ? WHERE id = ?',
+                      (proposed_name, face['id']))
+            matched_count += 1
+    
+    conn.commit()
+    conn.close()
+    
+    if matched_count > 0:
+        flash(f'Rescan complete: {matched_count} face(s) matched to known identities.', 'success')
+    else:
+        flash('Rescan complete: no new matches found.', 'info')
+    
+    return redirect(url_for('review'))
+
 @app.route('/tag/<int:id>', methods=['POST'])
 @login_required
 def tag_face(id):
