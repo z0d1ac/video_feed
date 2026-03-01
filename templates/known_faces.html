@@ -2,8 +2,16 @@
 
 {% block content %}
 <div class="row mb-4">
-    <div class="col">
+    <div class="col" style="display: flex; justify-content: space-between; align-items: flex-start;">
         <h1><i class="fas fa-database"></i> Personnel Database</h1>
+        {% if faces %}
+        <form action="{{ url_for('reencode_faces') }}" method="POST"
+            onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').innerHTML='<i class=\'fas fa-spinner fa-spin\'></i> Re-encoding...';">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-redo"></i> Re-encode All
+            </button>
+        </form>
+        {% endif %}
     </div>
 </div>
 

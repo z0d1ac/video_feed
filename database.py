@@ -171,6 +171,16 @@ def update_known_face_name(id, name):
     conn.commit()
     conn.close()
 
+def update_known_face_encoding(id, encoding, version=2):
+    """Updates encoding and version for a known face."""
+    conn = get_db_connection()
+    c = conn.cursor()
+    encoding_json = json.dumps(encoding.tolist() if hasattr(encoding, 'tolist') else list(encoding))
+    c.execute('UPDATE known_faces SET encoding = ?, encoding_version = ? WHERE id = ?',
+              (encoding_json, version, id))
+    conn.commit()
+    conn.close()
+
 
 # Event Listeners
 EVENT_LISTENERS = []

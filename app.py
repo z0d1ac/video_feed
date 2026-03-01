@@ -591,6 +591,65 @@ def known_faces():
             face['created_at'] = dt.strftime('%Y-%m-%d %H:%M:%S')
     return render_template('known_faces.html', faces=faces, active_sort=sort_by)
 
+@app.route('/known_faces/reencode', methods=['POST'])
+@login_required
+def reencode_faces():
+    """Re-encode all known faces from their saved snapshots using ArcFace."""
+    import cv2
+    import numpy as np
+    
+    manager = get_manager()
+    
+    # Use the first available camera's FR system for encoding
+    fr_system = None
+    for cam in manager.cameras.values():
+        fr_system = cam.fr_system
+        break
+    
+    if not fr_system:
+        flash('No active camera with face recognition system.', 'error')
+        return redirect(url_for('known_faces'))
+    
+    all_faces = database.get_known_faces(version=None)
+    updated = 0
+    skipped = 0
+    failed = 0
+    
+    for face in all_faces:
+        snapshot_path = face.get('snapshot_path')
+        if not snapshot_path or not os.path.exists(snapshot_path):
+            skipped += 1
+            continue
+        
+        # Load the snapshot image
+        img = cv2.imread(snapshot_path)
+        if img is None:
+            skipped += 1
+            continue
+        
+        # Run face detection + encoding via the FR system
+        rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        results = fr_system.process_frame(rgb)
+        
+        if not results:
+            failed += 1
+            continue
+        
+        # Use the best-scoring face if multiple detected
+        best = max(results, key=lambda r: r[7])  # r[7] = score
+        new_encoding = best[5]  # r[5] = encoding
+        
+        # Update in DB
+        database.update_known_face_encoding(face['id'], new_encoding, version=2)
+        updated += 1
+    
+    # Reload known faces in all cameras
+    for cam in manager.cameras.values():
+        cam.fr_system.reload_known_faces()
+    
+    flash(f'Re-encode complete: {updated} updated, {failed} no face detected, {skipped} no snapshot.', 'success')
+    return redirect(url_for('known_faces'))
+
 @app.route('/known_faces/update/<int:id>', methods=['POST'])
 @login_required
 def update_face(id):
